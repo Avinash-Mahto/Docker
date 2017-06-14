@@ -66,7 +66,7 @@
           ports:
            - "4000:80"
            
-           ![Alt text](relative/path/to/Capture.jpg?raw=true "Title")
+           ![Alt text](https://github.com/Avinash-Mahto/Docker/blob/master/Capture.JPG?raw=true "Title")
            
 ##### After that initialize the swarm service and scale your app
 
