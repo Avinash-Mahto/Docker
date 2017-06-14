@@ -65,3 +65,86 @@
           restart: yes
           ports:
            - "4000:80"
+           
+##### After that initialize the swarm service and scale your app
+
+    ---
+    - hosts: all
+      sudo: yes
+      tasks:
+
+      - name: "Initialize swarm cluster"
+        shell: >
+         docker swarm init --advertise-addr={{ swarm_iface | default('enp0s8') }}:2377
+
+      - name: Copy docker-compose.yml to /root/docker
+        copy:
+         src: /root/docker-compose.yml
+         dest: /root/docker/
+
+      - name: App creation
+        command: "docker stack deploy -c /root/docker/docker-compose.yml getstartedlab"
+        
+##### Need to define following files on your Ansible server following the path /root
+        $ vi Dockerfile
+
+
+        FROM python:2.7-slim
+        WORKDIR /app
+        ADD . /app
+        RUN pip install -r requirements.txt
+        EXPOSE 80
+        ENV NAME World
+        CMD ["python", "app.py"]
+
+    $ vi app.py
+
+    from flask import Flask
+    from redis import Redis, RedisError
+    import os
+    import socket
+
+    # Connect to Redis
+    redis = Redis(host="redis", db=0, socket_connect_timeout=2, socket_timeout=2)
+
+    app = Flask(__name__)
+
+    @app.route("/")
+    def hello():
+        try:
+            visits = redis.incr("counter")
+        except RedisError:
+            visits = "<i>cannot connect to Redis, counter disabled</i>"
+
+        html = "<h3>Hello {name}!</h3>" \
+               "<b>Hostname:</b> {hostname}<br/>" \
+               "<b>Visits:</b> {visits}"
+        return html.format(name=os.getenv("NAME", "world"), hostname=socket.gethostname(), visits=visits)
+
+    if __name__ == "__main__":
+            app.run(host='0.0.0.0', port=80)
+            
+
+    $ vi docker-compose.yml
+
+    version: "3"
+    services:
+      web:
+        # replace username/repo:tag with your name and image details
+        image: friendlyhello
+        deploy:
+          replicas: 5
+          resources:
+            limits:
+              cpus: "0.1"
+              memory: 50M
+          restart_policy:
+            condition: on-failure
+        ports:
+          - "80:80"
+        networks:
+          - webnet
+    networks:
+      webnet:
+      
+##### Best of luck
