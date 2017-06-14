@@ -85,7 +85,7 @@
       - name: App creation
         command: "docker stack deploy -c /root/docker/docker-compose.yml getstartedlab"
         
-##### Need to define following files on your Ansible server following the path /root
+##### Need to define following files in your Ansible server at /root
         $ vi Dockerfile
 
 
