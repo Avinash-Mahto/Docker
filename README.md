@@ -65,8 +65,10 @@
           restart: yes
           ports:
            - "4000:80"
-           
+##### Here is output of above code:
+
    ![Capture.JPG](Capture.JPG?raw=true "Title")
+   
            
 ##### After that initialize the swarm service and scale your app
 
