@@ -1,5 +1,5 @@
 ##### Docker
-##### Define a docker container and running app through it.
+##### Define a docker container and running app through Ansible.
 
     ---
     - hosts: all
