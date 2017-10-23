@@ -1,0 +1,58 @@
+Docker:
+
+# To install Docker
+$ yum install docker
+# To download docker image 
+$ docker pull Ubuntu
+# Check docker images
+$ docker images
+# Build docker image/app
+$ docker build -t IMAGE_NAME ( Path of the app file )
+# Check container
+$ docker ps –l
+$ docker container ls
+# Run container
+$ docker run –it CONTAINER_NAME /bin/bash
+# Attach running docker
+$ docker attach CONTAINER_ID
+# Login into Docker hub repo
+$ docker login
+# Tag the image 
+$ docker tag image username/repository:tag
+Ex: docker tag friendlyhello 37318918/get-started:part2
+# Start/Stop docker container 
+$ docker container start CONTAINER_ID
+$ docker container stop CONTAINER_ID
+# Publish the image
+$docker push username/repository:tag
+# Pull and run the image from remote repository
+$ docker run –p 4000:80 37318918/get-started:part2
+
+Service:
+# Launch stack
+$ docker stack deploy –c docker-compose.yml  getstartedlab
+
+# Check docker services 
+$ docker service ls
+# Inspect the task
+$ docker inspect
+#  Command to list container
+$ docker container ls –q
+# Remove stack
+$ docker stack rm getstartedlab
+
+Swarm:
+
+# Swarm initialization 
+$ docker swarm init --advertise-addr 10.0.0.xx
+# Deploy the app on swarm manager
+$ docker stack deploy –c docker-compose.yml getstartedlab
+$ docker stack ps getstartedlab
+#  take don node sarm from the manager
+$ docker swarm leave --force
+
+
+
+
+
+
