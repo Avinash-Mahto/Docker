@@ -1,0 +1,611 @@
+  RHUA:		
+    		/root/setup/Makefile		
+              	/gen_rpm_gpgkey.sh		
+              	/certs/Makefile		
+    		/etc/rpm/macros.rhel5compat	
+	
+  CDS:		
+    		/root/setup/Makefile		
+
+
+
+######################################
+RHUA: to edit the three files below
+######################################
+
+setup/Makefile	
+/answers.txt	
+/certs/Makefile	
+   
+======================================================
+setup/Makefile:	
+=======================================================
+11 Specify the entitlement certificate Download from RHN
+44 line: to describe the FQDN of RHUA
+53 line: to describe the FQDN of RHUA
+
+57 : Change in /root/setup/certs/{RHUA_FQDN}.crt
+58 : Change in /root/setup/certs/{RHUA_FQDN}.key
+93 : to describe the FQDN of CDS1
+97 : Change in /root/setup/certs/{CDS1_FQDN}.crt
+98 : Change in /root/setup/certs/{CDS1_FQDN}.key
+102: to describe the FQDN of CDS2
+103: Change in /root/setup/certs/{CDS2_FQDN}.crt
+104: Change in /root/setup/certs/{CDS2_FQDN}.key
+
+
+=======================================================
+setup/certs/Makafile:
+=======================================================
+12 : to describe the number of days from the date of creation until 2029/6/30
+15 : describes the FQDN of RHUA
+16 : describes the FQDN of CDS1
+17 : describes the FQDN of CDS2
+
+######################################
+CDS: to edit a single file below
+#####################################
+
+===================================
+setup/Makefile	
+===================================
+	Makefile:
+
+6: to change the FQDN of the corresponding CDS
+
+===============================================
+- Preparation of various X.509 certificate
+
+- Prepare a variety of X.509 certificate to be used later in front of the installation of RHUI.
+
+- This time , it has issued the SSL server certificate with the new own CA, this case will prepare for the next
+
+*the CA's private key and certificate
+*certificate private key and the CA of RHUA signed
+*certificate private key and the CA of the CDS has been signed
+*Prepare the certificate with the CA private key necessary to further client entitlement certificate 
+and certificate private key of the CA for the entitlement certificate issued
+Also create a new one in the CA always RHUA of entitlement certificates for issuance .
+
+RHUA to prepare a new SSL CA on the server , to create a certificate
+openssl command , such as by Create the following file on the server RHUA / to root / setup / certs / in .
+
+
+*SSL CA certificate and private key
+
+	- CA private key : rhui-ca.key
+	- CA serial number file of the certificate of : rhui-ca.srl
+	- CA certificate : rhui-ca.crt
+
+*server certificate and private key of RHUA (SSL):
+
+	- RHUA secret key of : <RHUA FQDN> .key
+	- Request to issue a ? RHUA of certificate : <RHUA FQDN> .csr
+	- RHUA of certificate : <RHUA FQDN> .crt
+
+
+*CDS server certificate and private key (SSL) ( each CDS):
+
+	- private key : <CDS FQDN> .key
+	- Request to issue ? the certificate : <CDS FQDN> .csr
+	- certificate : <CDS FQDN> .crt
+
+*Entitlement CA certificate and private key :
+
+	- entitlement CA private key : entitlement-ca-key.pem
+	- entitlement CA certificate : entitlement-ca.crt
+
+
+--------------------------------------------------------------------
+In order to prevent problems such as typing errors , all to create a stretch in the Makefile which describes each of the creation procedure (certs target ) .
+
+--------------------------------------------------------------------
+The following work will be performed in all RHUA on the server 
+---------------------------------------------------------------------
+
+==================================================================
+# make -C setup/	
+make: Entering directory `/root/setup'			
+Usage: make [VAR_OVERRIDES ...]			
+
+ex. make RHUI_URL=http://example.com/rhui.iso fetch_RHUI_ISO='curl ' fetch							
+ex. make install-rhua							
+							
+Targets for RHUA: check fetch install-rhua certs genconf genkey							
+							
+make: Leaving directory `/root/setup'							
+
+#
+======================================================================
+
+# make -C setup/ certs			
+
+make: Entering directory `/root/setup'						
+test -f /root/setup/certs/certs.stamp || make -C /root/setup/certs certs						
+make[1]: Entering directory `/root/setup/certs'						
+echo 10 > rhui-ca.srl						
+openssl req -new -x509 -extensions v3_ca -days 3650 -nodes -keyout rhui-ca.key -subj "/C=JP/ST=Tokyo/O=NTT Communications Corp./CN=m0416i0.svr.t5a.bhec.local CA" -out rhui-ca.crt						
+Generating a 2048 bit RSA private key						
+...+++						
+...................+++						
+writing new private key to 'rhui-ca.key'						
+-----						
+openssl genrsa -out m0416i0.svr.t5a.bhec.local.key 2048						
+Generating RSA private key, 2048 bit long modulus						
+.....................................+++						
+..................................+++						
+e is 65537 (0x10001)						
+openssl req -new -key m0416i0.svr.t5a.bhec.local.key -subj "/C=JP/ST=Tokyo/O=NTT Communications Corp./CN=m0416i0.svr.t5a.bhec.local" -out m0416i0.svr.t5a.bhec.local.csr						
+openssl x509 -req -days 3650 -CA rhui-ca.crt -CAkey rhui-ca.key -in m0416i0.svr.t5a.bhec.local.csr -out m0416i0.svr.t5a.bhec.local.crt						
+Signature ok						
+subject=/C=JP/ST=Tokyo/O=NTT Communications Corp./CN=m0416i0.svr.t5a.bhec.local						
+Getting CA Private Key						
+openssl req -new -x509 -extensions v3_ca -days 3650 -nodes -keyout entitlement-ca-key.pem -subj "/C=JP/ST=Tokyo/O=NTT Communications Corp./CN=m0416i0.svr.t5a.bhec.local Entitlement CA" -out entitlement-ca.crt						
+Generating a 2048 bit RSA private key						
+...................+++						
+..................................................................+++						
+writing new private key to 'entitlement-ca-key.pem'						
+-----						
+openssl genrsa -out m0417i0.svr.t5a.bhec.local.key 2048						
+Generating RSA private key, 2048 bit long modulus						
+....................................................+++						
+........+++						
+e is 65537 (0x10001)						
+openssl req -new -key m0417i0.svr.t5a.bhec.local.key -subj "/C=JP/ST=Tokyo/O=NTT Communications Corp./CN=m0417i0.svr.t5a.bhec.local" -out m0417i0.svr.t5a.bhec.local.csr						
+openssl x509 -req -days 3650 -CA rhui-ca.crt -CAkey rhui-ca.key -in m0417i0.svr.t5a.bhec.local.csr -out m0417i0.svr.t5a.bhec.local.crt						
+Signature ok						
+subject=/C=JP/ST=Tokyo/O=NTT Communications Corp./CN=m0417i0.svr.t5a.bhec.local						
+Getting CA Private Key						
+openssl genrsa -out m0418i0.svr.t5a.bhec.local.key 2048						
+Generating RSA private key, 2048 bit long modulus						
+........................................+++						
+......................+++						
+e is 65537 (0x10001)						
+openssl req -new -key m0418i0.svr.t5a.bhec.local.key -subj "/C=JP/ST=Tokyo/O=NTT Communications Corp./CN=m0418i0.svr.t5a.bhec.local" -out m0418i0.svr.t5a.bhec.local.csr						
+openssl x509 -req -days 3650 -CA rhui-ca.crt -CAkey rhui-ca.key -in m0418i0.svr.t5a.bhec.local.csr -out m0418i0.svr.t5a.bhec.local.crt						
+Signature ok						
+subject=/C=JP/ST=Tokyo/O=NTT Communications Corp./CN=m0418i0.svr.t5a.bhec.local						
+Getting CA Private Key						
+touch certs.stamp						
+make[1]: Leaving directory `/root/setup/certs'						
+make: Leaving directory `/root/setup'						
+#						
+===============================================================
+
+
+========================================================================
+# ls setup/certs/							
+certs.stamp                     m0417i0.svr.t5a.bhec.local.crt  Makefile							
+entitlement-ca.crt              m0417i0.svr.t5a.bhec.local.csr  rhui-ca.crt							
+entitlement-ca-key.pem          m0417i0.svr.t5a.bhec.local.key  rhui-ca.key							
+m0416i0.svr.t5a.bhec.local.crt  m0418i0.svr.t5a.bhec.local.crt  rhui-ca.srl							
+m0416i0.svr.t5a.bhec.local.csr  m0418i0.svr.t5a.bhec.local.csr							
+m0416i0.svr.t5a.bhec.local.key  m0418i0.svr.t5a.bhec.local.key							
+#							
+=========================================================================
+
+please get if necessary to back up a certificate created directory When all have created a certificate 
+
+? In addition to add a CDS server , and this certificate create it if you want to change the FQDN of RHUA and CDS server
+
+Depending on the procedure of creating the next RHUI configuration package required side must be carried out in order .
+
+
+==================================================================
+
+preparation of the GPG key pair of custom RPM package for signing
+
+===================================================================
+
+Prepare the GPG key pair for electronic signature to various RPM package ( such as RHUI setting package ) that you create in later RHUA.
+
+In the same manner as in the certificate created prepared in the make ( target genkey)
+
+# In the case of vm, take generating keys time (in the case of it's verification environment a key length of 4096 takes more than 4 hours)
+
+# You get a message that requests the keyboard and mouse input at the prompt in order to increase the encryption strength .
+
+The following work will be performed in all RHUA on the server .
+
+
+
+===============================================================
+
+# make -C setup/ genkey										
+make: Entering directory `/root/setup'										
+bash -x /root/setup/gen_rpm_gpgkey.sh 2>&1 | tee /root/setup/gen_rpm_gpgkey.sh.log										
++ set -x										
++ custom_gpg_key=/root/setup/RPM-GPG-KEY-rhui-custom										
++ custom_gpg_conf=/root/setup/rhui-gpg.conf										
+=+ test -d /root/setup										
+=+ cat										
+=+ export ENTROPY_GEN_PROCESS=2345										
++ find / -xdev -type f -exec sha256sum '{}' ';'										
+=+ ENTROPY_GEN_PROCESS=2345										
+=+ gpg -v --batch --gen-key /root/setup/rhui-gpg.conf										
+gpg: keyring `/root/.gnupg/secring.gpg' created										
+gpg: skipping control `%no-protection' ()										
+gpg: skipping control `%transient-key' ()										
+can't connect to `/root/.gnupg/S.gpg-agent': No such file or directory										
+gpg: no running gpg-agent - starting one										
+gpg-agent[2348]: directory `/root/.gnupg/private-keys-v1.d' created										
+gpg: writing self signature										
+gpg: RSA/SHA1 signature from: "C27E137B [?]"										
+gpg: writing public key to `/root/.gnupg/pubring.gpg'										
+gpg: writing secret key to `/root/.gnupg/secring.gpg'										
+gpg: using PGP trust model										
+gpg: key C27E137B marked as ultimately trusted										
++ kill 2345										
+=++ gpg --list-keys										
+++ sed -nr 's,^pub[^/]+/(.+) [0-9].*,?1,p'										
+gpg: checking the trustdb										
+gpg: 3 marginal(s) needed, 1 complete(s) needed, PGP trust model										
+gpg: depth: 0  valid:   1  signed:   0  trust: 0-, 0q, 0n, 0m, 0f, 1u										
++ keyid=C27E137B										
+/root/setup/gen_rpm_gpgkey.sh: line 27:  2345 Terminated              ( find / -xdev -type f -exec sha256sum {} ?; > /dev/null 2>&1 )										
++ gpg -a --export C27E137B										
+=+ cat										
+=+ cd /root										
++ test -f .rpmmacros										
++ ln -s dot.rpmmacros .rpmmacros										
+make: Leaving directory `/root/setup'										
+#										
+==============================================================================
+
+==============================================================================
+# cat .rpmmacros											
+%_signature gpg											
+%_gpg_name C27E137B											
+%__gpg_sign_cmd %{__gpg}   gpg --force-v3-sigs --digest-algo=sha1 --batch --no-verbose --no-armor											
+       --passphrase-fd 3 --no-secmem-warning -u "%{_gpg_name}"											
+       -sbo %{__signature_filename} %{__plaintext_filename}											
+#											
+
+=======================================================================
+
+
+
+
+
+TAB - 3
+
+*****************************************************************
+Installation of ? RHUI RPM package
+******************************************************************
+
+RHUI using the installation ISO image , and then install the RPM package of RHUI to RHUA · CDS.
+
+ISO image is what was placed in the / root / setup / in step1.
+
+? to umount If it fails to yum, run make again after yum install only the failed package .
+
+
+=================================================================================
+
+The following command will run on RHUA server .
+
+==================================================================================
+
+# make -C setup/ install-rhua									
+									
+make: Entering directory `/root/setup'									
+									
+mount -o ro,loop RHEL-6-RHUI-2-LATEST-Server-x86_64-DVD.iso /mnt									
+									
+cd /mnt && ./install_RHUA.sh && cd - && umount /mnt									
+									
+Checking for hostname…									
+Hostname set to m0416i0.svr.t5a.bhec.local.									
+									
+									
+									
+Installing Red Hat Update Appliance packages									
+									
+									
+									
+Loaded plugins: product-id, security, subscription-manager									
+									
+- ?? -									
+									
+Complete!									
+									
+Executing /usr/bin/nss-db-gen									
+									
+Working in: /tmp/tmp4642									
+									
+Password file created.									
+									
+Database created.									
+									
+Creating CA certificate:									
+									
+Generating key.  This may take a few moments...									
+									
+CA created									
+									
+Creating BROKER certificate:									
+									
+Generating key.  This may take a few moments...									
+									
+Broker certificate created.									
+									
+Creating CLIENT certificate:									
+									
+Generating key.  This may take a few moments...									
+									
+Client certificate created.									
+									
+pk12util: PKCS12 EXPORT SUCCESSFUL									
+									
+MAC verified OK									
+									
+Client key & certificate exported									
+									
+Artifacts copied to: /etc/rhui/qpid.									
+									
+Red Hat Update Infrastructure Tools packages sucessfully installed and can be started by									
+executing rhui-tools from the prompt.									
+									
+/root/setup									
+									
+touch /root/setup/install-rhua.stamp									
+									
+make: Leaving directory `/root/setup'									
+									
+#									
+									
+???????CDS1??????????									
+									
+# make -C setup/									
+									
+make: Entering directory `/root/setup'									
+									
+RPM-GPG-KEY-rhui-custom									
+									
+date									
+									
+Fri Jun  22 11:53:59 JST 2015									
+fqdn=`hostname -f`; test "m0417i0.svr.t5a.bhec.local" != "x" -a "x$fqdn" = "m0417i0.svr.t5a.bhec.local"									
+									
+touch /root/setup/check.stamp									
+									
+mount -o ro,loop /root/setup/RHEL-6-RHUI-2-LATEST-Server-x86_64-DVD.iso /mnt									
+									
+cd /mnt && ./install_CDS.sh && cd - && umount /mnt									
+									
+Checking for hostname...									
+									
+Hostname set to m0417i0.svr.t5a.bhec.local.									
+									
+Installing Red Hat Content Deliver Server packages									
+									
+Loaded plugins: product-id, security, subscription-manager									
+									
+- ?? -									
+									
+Complete!									
+									
+Red Hat Content Delivery Server packages installed.									
+									
+/root/setup									
+touch /root/setup/install-cds.stamp									
+									
+make: Leaving directory `/root/setup'									
+									
+#									
+================================================================
+
+===================================================================
+The following command will run in CDS2 server .
+===================================================================
+
+# make -C setup/									
+									
+make: Entering directory `/root/setup'									
+									
+RPM-GPG-KEY-rhui-custom									
+									
+date									
+									
+Fri Jun  22 11:55:33 JST 2015									
+fqdn=`hostname -f`; test "m0418i0.svr.t5a.bhec.local" != "x" -a "x$fqdn" = "m0418i0.svr.t5a.bhec.local"									
+									
+touch /root/setup/check.stamp									
+									
+mount -o ro,loop /root/setup/RHEL-6-RHUI-2-LATEST-Server-x86_64-DVD.iso /mnt									
+									
+cd /mnt && ./install_CDS.sh && cd - && umount /mnt									
+									
+Checking for hostname...									
+									
+Hostname set to m0418i0.svr.t5a.bhec.local.									
+									
+Installing Red Hat Content Deliver Server packages									
+									
+Loaded plugins: product-id, security, subscription-manager									
+									
+- ?? -									
+									
+Complete!									
+
+========================================================
+
+Red Hat Content Delivery Server packages installed.	
+
+/root/setup			
+touch /root/setup/install-cds.stamp	
+
+make: Leaving directory `/root/setup'			
+			
+#			
+		
+			
+
+
+
+==============================================================
+
+
+Tab- 4
+
+==============================================================
+
+The basic setting of RHUI
+
+===========================================================
+
+
+Setting of RHUI consists of two steps roughly .
+
+	1. Create a RHUA · CDS configuration package due to rhui-installer ( this procedure )
+	2. Installation of the configuration package (step6)
+
+Create a RPM package including RHUA and CDS of settings and certificate files in rhui-installer command .
+
+	1. preparation of answers.txt (/root/setup/answers.txt to be prepared in the pre- work )
+	2. execution of rhui-installer
+==========================================================================================
+
+The contents of answers.txt:
+
+? RHUA and path of the file of the CDS certificate and private key with the name of
+? working directory to be used to create the RHUI setting package
+? proxy settings of between ( if necessary ) RHUA and RHN
+
+
+===============================================================================================
+The following command will be run on the server RHUA
+==============================================================================================
+
+# cp /etc/rhui/answers.sample /root/setup/answers.txt									
+									
+# vi setup/answers.txt									
+									
+Please change to suit the environment the FQDN.								
+									
+----------------------------------------------------------------------------------------									
+[general]									
+version: 2.1									
+dest_dir: /root/setup/rhui									
+qpid_ca: /etc/rhui/qpid/ca.crt									
+qpid_client: /etc/rhui/qpid/client.crt									
+qpid_nss_db: /etc/rhui/qpid/nss									
+									
+									
+[rhua]									
+rpm_name: rh-rhua-config									
+hostname: <RHUA FQDN>									
+ssl_cert: /root/setup/certs/<RHUA FQDN>.crt									
+ssl_key: /root/setup/certs/<RHUA FQDN>.key									
+ca_cert: /root/setup/certs/rhui-ca.crt									
+						
+		
+									
+[cds-1]									
+rpm_name: rh-cds1-config									
+hostname: <CDS1 FQDN>									
+ssl_cert: /root/setup/certs/<CDS1 FQDN>.crt									
+ssl_key: /root/setup/certs/<CDS1 FQDN>.key									
+									
+									
+[cds-2]									
+rpm_name: rh-cds2-config									
+hostname: <CDS2 FQDN>									
+ssl_cert: /root/setup/certs/<CDS2 FQDN>.crt									
+ssl_key: /root/setup/certs/<CDS2 FQDN>.key									
+									
+----------------------------------------------------------------------------------------									
+#									
+
+=======================================================================
+
+The following command will be run on the server RHUA
+============================================================================
+
+
+# make -C setup genconf									
+									
+make: Entering directory `/root/setup'									
+									
+rhui-installer /root/setup/answers.txt 2>&1 | tee /root/setup/rhui-install.log									
+									
+Generating RHUA configuration RPM									
+									
+RHUA RPM can be found at [/root/setup/rhui]									
+									
+Generating CDS bundle for CDS ["CDS1 FQDN"]									
+									
+CDS RPM can be found at [/root/setup/rhui]									
+									
+Generating CDS bundle for CDS ["CDS2 FQDN"]									
+									
+CDS RPM can be found at [/root/setup/rhui]									
+									
+make: Leaving directory `/root/setup'									
+									
+#									
+=================================================================
+
+
+===================================================================================================================
+Here in the creation of the RHUA · CDS configuration package due to rhui-installer is running over the make as genconf target of Makefile.
+
+After rhui-installer run , RHUI setting package for RHUA and CDS under the working directory , as specified in the answers.txt will be created dedicated to each server .
+
+============================================================
+The following command will be run on the server RHUA
+============================================================
+
+# ls setup/rhui									
+									
+rh-cds1.jp-e1-config-2.1                   rh-cds2-config-2.1-2.el6.noarch.rpm									
+rh-cds1.jp-e1-config-2.1-2.el6.noarch.rpm  rh-rhua-config-2.1									
+rh-cds2.jp-e1-config-2.1                   rh-rhua-config-2.1-2.el6.noarch.rpm									
+									
+#									
+======================================================================
+
+We have an electronic signature with a key that you created earlier in RHUI configuration package that was created so that it can be verified later 
+
+The following command will be run on the server RHUA
+
+========================================================================
+# rpm --resign setup/rhui/rh-*.rpm									
+									
+Enter pass phrase:? Please enter a Passphrase value specified in the /root/setup/rhui-gpg.conf here of the passphrase .					
+									
+Pass phrase is good.									
+									
+setup/rhui/rh-cds1-config-2.1-2.el6.noarch.rpm:									
+									
+setup/rhui/rh-cds2-config-2.1-2.el6.noarch.rpm:									
+									
+setup/rhui/rh-rhua-config-2.1-2.el6.noarch.rpm:									
+									
+#	
+
+==========================================================================								
+
+Also this GPG key is also installed on the system , you have imported .
+
+The following command will be run on the server RHUA
+
+
+# install -m 644 setup/RPM-GPG-KEY-rhui-custom /etc/pki/rpm-gpg/									
+# rpm --import /etc/pki/rpm-gpg/RPM-GPG-KEY-rhui-custom									
+#									
+
+
+==========================================================================
+
+
+
+? This setting package as long as the certificate and various settings does not change, it will be the setting of the backup data, It is recommended that you also collectively save this RPM package file .
+
+===================================================
+Tab - 5
+===================================================
+
+
+
+
