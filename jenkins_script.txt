@@ -1,0 +1,30 @@
+#!groovy
+pipeline {
+    agent { label 'lab3testing' }
+
+    options {
+        skipDefaultCheckout()
+    }
+
+    stages {
+        stage('Checkout SCM') {
+            steps {
+                deleteDir()
+                checkout([$class: 'GitSCM', branches: [[name: env.BRANCH_NAME]], doGenerateSubmoduleConfigurations: false, extensions: [[$class: 'SubmoduleOption', disableSubmodules: false, parentCredentials: true, recursiveSubmodules: true, reference: '', timeout: 1, trackingSubmodules: false]], submoduleCfg: [], userRemoteConfigs: [[credentialsId: 'id_rsa.adminpod', url: 'git@github.com:tamac-io/deli-adminpod-ansible']]])
+            }
+        }
+        stage('test common') {
+            steps {
+                sshagent(['id_rsa.adminpod']) {
+                    ansiColor('xterm') {
+                        timeout(30) {
+                            sh "test_scripts/ssh_remote_execute.sh checkout_branch.sh ${env.BRANCH_NAME}"
+                            sh "test_scripts/ssh_remote_execute.sh test_vm_restore_to_cleaninstall.sh"
+                            sh "test_scripts/ssh_remote_execute.sh test_vm_apply_common.sh"
+                            sh "test_scripts/ssh_remote_execute.sh test_vm_spec_common.sh"
+                        }
+                    }
+                }
+            }
+        }
+    }

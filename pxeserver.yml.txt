@@ -1,0 +1,304 @@
+[tempuser@va1nv-adju0001n tasks]$ cat pxeserver.yml
+---
+- block:
+  - name: clear pxeserver_packages
+    set_fact:
+      pxeserver_packages:
+        - xinetd
+        - tftp-server
+        - dhcp
+        - syslinux
+        - httpd
+
+  - name: be sure pxeserver pakcages are installed
+    yum: name={{ item }} state=installed
+    with_items:
+      "{{ pxeserver_packages }}"
+    register:
+      result_pxeserver_packages
+    ignore_errors:
+      True
+
+  - name: be sure pxeserver packages are installed (retry from pxeserver)
+    yum: name={{ item }} state=installed disablerepo='*' enablerepo='pxeboot'
+    with_items:
+      "{{ pxeserver_packages }}"
+    when:
+      not result_pxeserver_packages | success
+
+#- name: bye-bye selinux (mounted iso read via tftp protocol failed due to selinux context)
+#  selinux: policy=targeted state=permissive
+
+- name: create /var/lib/tftpboot/*
+  file:
+    path: "/var/lib/tftpboot/{{ item }}"
+    state: directory
+  with_items:
+    - pxelinux.cfg
+    - efi
+    - ks
+    - preseed
+    - post-scripts
+    - isos
+    - packages
+    - disks
+
+## TODO: md5 check and retry
+
+- name: download packages (sync from nearby pxeserver)
+  get_url:
+    url: http://{{ hostvars[item.1].ansible_default_ipv4.address }}/tftpboot/packages/{{ item.0.name }}
+    dest: /var/lib/tftpboot/packages/{{ item.0.name }}
+    owner: root
+    group: root
+    mode: 0644
+  with_nested:
+    - "{{ packages_download }}"
+    - "{{ groups['pxeserver'] | reject('equalto', inventory_hostname) | list }}"
+  when:
+    (item.0.type is not defined or item.0.type != "iso") and item.0.name is defined and hostvars[item.1]['ansible_default_ipv4'] is defined
+  ignore_errors:
+    True
+  loop_control:
+    label: "http://{{ hostvars[item.1].ansible_default_ipv4.address }}/tftpboot/packages/{{ item.0.name }}"
+
+- name: download packages
+  get_url:
+    url: "{{ item.url }}"
+    dest: "/var/lib/tftpboot/packages/{{ item.name }}"
+    validate_certs: False
+    owner: root
+    group: root
+    mode: 0644
+  with_items:
+    "{{ packages_download }}"
+  when:
+    (item.type is not defined or item.type != "iso") and item.url is defined
+  loop_control:
+    label: "{{ item.url }}"
+
+## TODO: md5 check and retry
+
+- name: download iso packages (sync from nearby pxeserver)
+  get_url:
+    url: http://{{ hostvars[item.1].ansible_default_ipv4.address }}/tftpboot/isos/{{ item.0.name }}
+    dest: /var/lib/tftpboot/isos/{{ item.0.name }}
+    owner: root
+    group: root
+    mode: 0644
+  with_nested:
+    - "{{ packages_download }}"
+    - "{{ groups['pxeserver'] | reject('equalto', inventory_hostname) | list }}"
+  when:
+    (item.0.type is defined and item.0.type == "iso") and item.0.name is defined and hostvars[item.1]['ansible_default_ipv4'] is defined
+  ignore_errors:
+    True
+  loop_control:
+    label: "http://{{ hostvars[item.1].ansible_default_ipv4.address }}/tftpboot/isos/{{ item.0.name }}"
+
+- name: download iso packages
+  get_url:
+    url: "{{ item.url }}"
+    dest: "/var/lib/tftpboot/isos/{{ item.name }}"
+    validate_certs: False
+    owner: root
+    group: root
+    mode: 0644
+  with_items:
+    "{{ packages_download }}"
+  when:
+    (item.type is defined and item.type == "iso") and item.url is defined
+  loop_control:
+    label: "{{ item.url }}"
+
+## TODO: md5 check and retry
+
+- name: download iso images (sync from nearby pxeserver)
+  get_url:
+    url: http://{{ hostvars[item.1].ansible_default_ipv4.address }}/tftpboot/isos/{{ item.0.repo.isoname }}
+    dest: /var/lib/tftpboot/isos/{{ item.0.repo.isoname }}
+    owner: root
+    group: root
+    mode: 0644
+  with_nested:
+    - "{{ distro_template }}"
+    - "{{ groups['pxeserver'] | reject('equalto', inventory_hostname) | list }}"
+  when:
+    item.0.repo.isoname is defined and hostvars[item.1]['ansible_default_ipv4'] is defined
+  ignore_errors:
+    True
+  loop_control:
+    label: "http://{{ hostvars[item.1].ansible_default_ipv4.address }}/tftpboot/isos/{{ item.0.repo.isoname | default(' - Skip: no isoname') }}"
+
+- name: download iso images
+  get_url:
+    url: http://ecl_adminpod.str.cloudn-service.com/disk/iso/{{ item.repo.isoname }}
+    dest: /var/lib/tftpboot/isos/{{ item.repo.isoname }}
+    owner: root
+    group: root
+    mode: 0644
+  with_items:
+    "{{ distro_template }}"
+  when:
+    item.repo.isoname is defined
+  register:
+    result_iso_download
+  ignore_errors:
+    True
+  loop_control:
+    label: "http://ecl_adminpod.str.cloudn-service.com/disk/iso/{{ item.repo.isoname | default(' - Skip: no isoname') }}"
+
+## TODO: md5 check and retry
+
+- name: increase loop device count to 64
+  command: /sbin/MAKEDEV -m 64 /dev/loop
+  changed_when: false
+
+- name: parmanently increase loop device count to 64
+  lineinfile:
+    dest: /etc/rc.local
+    backup: yes
+    regexp: "{{ item.regexp }}"
+    line: "{{ item.line }}"
+    insertafter: "{{ item.insertafter }}"
+  with_items:
+    - regexp: '/sbin/MAKEDEV -m 64 /dev/loop'
+      line: "/sbin/MAKEDEV -m 64 /dev/loop"
+      insertafter: 'EOF'
+
+- name: Mount installation images
+  mount:
+    name: /var/lib/tftpboot/{{ item.repo.dirname }}
+    src: /var/lib/tftpboot/isos/{{ item.repo.isoname }}
+    fstype: iso9660
+    opts: loop
+    state: mounted
+  with_items:
+    "{{ distro_template }}"
+  when:
+    item.repo.isoname is defined and item.repo.dirname is defined
+  loop_control:
+    label: "/var/lib/tftpboot/{{ item.repo.dirname | default(' - Skip: no isoname or no dirname')}}"
+
+- name: copy syslinux things to tftpboot dir
+  shell: /bin/cp /usr/share/syslinux/{{ item }} /var/lib/tftpboot/{{ item }}
+  args:
+    creates: /var/lib/tftpboot/{{ item }}
+  with_items:
+    - pxelinux.0
+    - menu.c32
+    - memdisk
+    - mboot.c32
+    - chain.c32
+    - vesamenu.c32
+
+- name: copy grubx64.efi to tftp dir
+  shell: /bin/cp /boot/efi/EFI/redhat/grub.efi /var/lib/tftpboot/bootx64.efi
+  args:
+    creates: /var/lib/tftpboot/bootx64.efi
+
+- name: modify permission
+  file:
+    path: "/var/lib/tftpboot/{{ item }}"
+    mode: 0644
+  with_items:
+    - pxelinux.0
+    - menu.c32
+    - memdisk
+    - mboot.c32
+    - chain.c32
+    - vesamenu.c32
+    - bootx64.efi
+
+#- name: link install image to efi dir
+#  file:
+#    state: link
+#    src: /var/lib/tftpboot/{{ item }}
+#    dest: /var/lib/tftpboot/efi/{{ item }}
+#  with_items:
+#    - CentOS
+#    - Ubuntu
+#    - RHEL
+
+- name: check if ip_alias required, then setup nic parameter for the interface
+  set_fact:
+    interface_ip_aliases_for_dhcpd: >
+      [
+        {% for item in dhcpd.subnets %}
+          {% if item.ip_alias is defined %}
+            {% set alias_interface = item.ip_alias %}
+            {% set parent_interface = item.ip_alias.split(':')[0] %}
+            {% set parent_address = hostvars[inventory_hostname]["ansible_" + parent_interface]['ipv4']['address'] %}
+            {% set parent_network = hostvars[inventory_hostname]["ansible_" + parent_interface]['ipv4']['network'] %}
+            {% set parent_address_index = parent_address | ipaddr('int') - parent_network | ipaddr('int') %}
+            {% set alias_address = item.network | ipaddr('subnet') | ipaddr(parent_address_index) %}
+            {% if alias_address is defined %}
+              {{ { 'name': alias_interface , 'ipv4_addr': alias_address } }},
+            {% endif %}
+          {% endif %}
+        {% endfor %}
+      ]
+
+# NOTE: ifcfg-ethX:Y style of ip alias is obsolete
+#       modern configuration uses IPADDR2=... NETMASK2=... directive in ifcfg-ethX
+- name: create nic config for ip_alias
+  template:
+    src: etc_sysconfig_network-scripts_ifcfg-IFACE.j2
+    dest: "/etc/sysconfig/network-scripts/ifcfg-{{ item.name }}"
+  with_items:
+    "{{ interface_ip_aliases_for_dhcpd }}"
+  register: result_ifcfg_ip_alias
+  notify:
+    - ifdown ifup with ip_alias
+    - gather_facts
+
+- name: flush handlers for later process
+  meta: flush_handlers
+
+- name: create dhcpd.conf
+  template:
+    src: dhcpd.conf.j2
+    dest: /etc/dhcp/dhcpd.conf
+  notify: restart dhcpd
+
+- name: start and enable dhcpd service
+  service:
+    name=dhcpd
+    state=started
+    enabled=yes
+
+- name: enable tftp-server
+  lineinfile: >
+    dest=/etc/xinetd.d/tftp
+    owner=root group=root mode=0644 backup=yes
+    regexp="{{ item.regexp }}"
+    line="{{ item.line }}"
+    insertafter="{{ item.insertafter }}"
+  with_items:
+    - regexp: '^\s*disable\s*='
+      line: "\tdisable\t\t\t= no"
+      insertafter: '^\s*server_args\s*='
+  notify: restart xinetd
+
+- name: start and enable xinetd service
+  service:
+    name=xinetd
+    state=started
+    enabled=yes
+
+- name: create conf.d/http-ks.conf
+  template:
+    src: httpd-ks.conf.j2
+    dest: /etc/httpd/conf.d/httpd-ks.conf
+  notify: restart httpd
+
+- name: start and enable httpd service
+  service:
+    name=httpd
+    state=started
+    enabled=yes
+  notify: restart httpd
+  ignore_errors: true
+
+- name: flush handlers for later process (mainly to up pxeserver local repository)
+  meta: flush_handlers

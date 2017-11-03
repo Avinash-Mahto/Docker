@@ -1,0 +1,10 @@
+---
+- include: pxeserver.yml
+  tags:
+    - pxeserver
+- include: snmpd.yml
+  tags:
+    - snmpd
+- include: pxetarget.yml
+  tags:
+    - pxetarget

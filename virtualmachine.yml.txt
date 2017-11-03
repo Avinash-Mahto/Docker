@@ -1,0 +1,121 @@
+---
+- name: create directroy for virtualmachine disk store
+  file:
+    path: /data/libvirt/images
+    state: directory
+
+- name: create directory for virtualmachine template/iso store
+  file:
+    path: /data/libvirt/templates
+    state: directory
+
+- name: list virtualmachines on the hypervisor
+  set_fact:
+    virtualmachines: '{{ managed_hosts | selectattr("type","equalto","virtual") | selectattr("virtualized.hypervisor", "equalto", inventory_hostname) | list }}'
+
+- name: create a disk
+  shell: >
+    {% if item.0.boot.templates is defined and item.0.boot.templates | selectattr("target","equalto",item.1.target) | list | count > 0 %}
+    {% set template = item.0.boot.templates | selectattr("target","equalto",item.1.target) | first %}
+    {% if template.format != item.1.type %}
+    echo "Error: disk type mismatch: template => {{ template.format }}, image => {{ item.1.type }}" &&
+    exit 1
+    {% else %}
+    qemu-img create
+    -f {{ template.format }}
+    -b /data/libvirt/templates/{{ template.filename }}
+    {% endif %}
+    {% else %}
+    qemu-img create
+    -f {{ item.1.type }}
+    {% if item.1.type == "qcow2" %} -o preallocation=metadata{% else %} -o preallocation=full{% endif %}
+    {% endif %}
+    /data/libvirt/images/{{ item.0.hostname }}_{{ item.1.target }}.img {{ item.1.size_gb }}G
+  args:
+    creates: /data/libvirt/images/{{ item.0.hostname }}_{{ item.1.target }}.img
+  with_subelements:
+    - "{{ virtualmachines }}"
+    - disks
+
+# lookup template sucks
+# https://github.com/ansible/ansible/issues/9551
+- name: define a virtual machine
+  virt:
+    name={{ item.hostname }}
+    command=define
+    xml="{{ lookup('template', playbook_dir + '/roles/hypervisor/templates/virtualmachine.xml.j2') }}"
+    uri='qemu:///system'
+  with_items:
+    "{{ virtualmachines }}"
+
+- name: list virtualmachines on the hypervisor
+  set_fact:
+    virtualmachines: '{{ managed_hosts | selectattr("type","equalto","virtual") | selectattr("virtualized.hypervisor", "equalto", inventory_hostname) | list }}'
+  when: virtualmachines is not defined
+  tags: virtualmachine_set_autostart
+
+- name: set autostart on virtualmachines
+  virt:
+    name={{ item.hostname }}
+    command=autostart
+    uri='qemu:///system'
+  with_items:
+    "{{ virtualmachines }}"
+  tags: virtualmachine_set_autostart
+
+- name: list virtualmachines on the hypervisor
+  set_fact:
+    virtualmachines: '{{ managed_hosts | selectattr("type","equalto","virtual") | selectattr("virtualized.hypervisor", "equalto", inventory_hostname) | list }}'
+  when: virtualmachines is not defined
+  tags: virtualmachine_create_bridge
+
+- name: list pre-defined interface names on the hypervisor
+  set_fact:
+    hypervisor_predefined_interfaces: '{{ managed_hosts | selectattr("hostname", "equalto", inventory_hostname) | map(attribute="interfaces") | sum(start=[]) | map(attribute="name") | unique | sort }}'
+  tags: virtualmachine_create_bridge
+
+- name: list bridges required for virtualmachies
+  set_fact:
+    virtualmachine_bridges: "{{ virtualmachines | map(attribute='interfaces') | sum(start=[]) | map(attribute='parent') | unique | sort }}"
+  tags: virtualmachine_create_bridge
+
+- name: init virtualmachine_bridge_interfaces structure
+  set_fact:
+    virtualmachine_bridge_interfaces: []
+  tags: virtualmachine_create_bridge
+
+- name: enumrate virtualmachine_bridge_interfaces
+  set_fact:
+    virtualmachine_bridge_interfaces: "{{ virtualmachine_bridge_interfaces + [{ 'master': item, 'name': item | replace('brbond','bond'), 'phydev': 'bond0', 'type': 'vlan_bridge_slave', 'vlan_id': item | replace('brbond0.','') | int, 'mtu': 9000}] + [{ 'name': item, 'type': 'bridge', 'mtu': 9000 }] }}"
+  with_items: "{{ virtualmachine_bridges }}"
+  when: item not in hypervisor_predefined_interfaces
+  tags: virtualmachine_create_bridge
+
+- name: create bridge interfaces
+  template:
+    src: etc_sysconfig_network-scripts_ifcfg-IFACE.j2
+    dest: /etc/sysconfig/network-scripts/ifcfg-{{ item.name }}
+  with_items:
+    "{{ virtualmachine_bridge_interfaces }}"
+  register: result_virtualmachine_bridge_interfaces
+  tags: virtualmachine_create_bridge
+
+- name: bring up bridge interfaces
+  command: "ifup {{ item }}"
+  with_items: "{{ result_virtualmachine_bridge_interfaces.results | selectattr('changed', 'equalto', true) | map(attribute='item.name') | list }}"
+  tags: virtualmachine_create_bridge
+
+- name: list virtualmachines on the hypervisor
+  set_fact:
+    virtualmachines: '{{ managed_hosts | selectattr("type","equalto","virtual") | selectattr("virtualized.hypervisor", "equalto", inventory_hostname) | list }}'
+  when: virtualmachines is not defined
+  tags: virtualmachine_start
+
+- name: make sure the virtual machine is running
+  virt:
+    name={{ item.hostname }}
+    state=running
+    uri='qemu:///system'
+  with_items:
+    "{{ virtualmachines }}"
+  tags: virtualmachine_start

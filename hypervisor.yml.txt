@@ -1,0 +1,84 @@
+---
+- name: be sure hypervisor packages are installed
+  yum: name={{ item }} state=present disablerepo='*' enablerepo='pxeboot'
+  with_items:
+    - qemu-kvm
+    - libvirt
+    - libvirt-python
+    - libcgroup
+    - kernel-devel
+    - bridge-utils
+    - vconfig
+    - dmidecode
+    - ipmitool
+    - OpenIPMI
+    - OpenIPMI-libs
+
+- name: be sure ksm and ksmtuned turned off
+  service: name={{ item }} state=stopped enabled=no
+  with_items:
+    - ksm
+    - ksmtuned
+
+- name: configure libvirtd.conf parameter
+  lineinfile: dest=/etc/libvirt/libvirtd.conf regexp='^{{item.name}} ' insertafter='^#{{item.name}}' line='{{item.name}} = {{item.value}}' owner=root group=root mode=0644
+  with_items:
+    - name: max_clients
+      value: 250
+    - name: max_workers
+      value: 250
+    - name: max_requests
+      value: 250
+  notify: restart libvirtd
+
+- name: configure /etc/sysconfig/libvirt-guests to shutdown guest when hypervisor shutdown
+  lineinfile:
+    dest: /etc/sysconfig/libvirt-guests
+    regexp: "{{ item.regexp }}"
+    line: "{{ item.line }}"
+    insertafter: "{{ item.insertafter | default('EOF') }}"
+    backup: yes
+  with_items:
+    - regexp: '^ON_BOOT='
+      line: 'ON_BOOT=ignore'
+      insertafter: '^#ON_BOOT='
+    - regexp: '^ON_SHUTDOWN='
+      line: 'ON_SHUTDOWN=shutdown'
+      insertafter: '^#ON_SHUTDOWN='
+    - regexp: '^PARALLEL_SHUTDOWN='
+      line: 'PARALLEL_SHUTDOWN=96'
+      insertafter: '^#PARALLEL_SHUTDOWN='
+    - regexp: '^SHUTDOWN_TIMEOUT='
+      line: 'SHUTDOWN_TIMEOUT=180'
+      insertafter: '^#SHUTDOWN_TIMEOUT='
+
+- name: be sure libvirt-guests is running and enabled
+  service: name=libvirt-guests state=running enabled=yes
+
+- name: be sure libvirtd is running and enabled
+  service: name=libvirtd state=running enabled=yes
+
+- name: be sure ntpdate set hwclock also
+  lineinfile:
+    dest: /etc/sysconfig/ntpdate
+    regexp: "{{ item.regexp }}"
+    line: "{{ item.line }}"
+    insertafter: "{{ item.insertafter | default('EOF') }}"
+    backup: yes
+  with_items:
+    - regexp: '^SYNC_HWCLOCK='
+      line: 'SYNC_HWCLOCK=yes'
+
+- name: be sure ntpdate runs on start
+  service: name=ntpdate enabled=yes
+  failed_when: false
+
+- name: check if virbr0 exist
+  shell: virsh net-list --all | grep -e '^default' | sed -e 's/\s\+/ /g' | cut -d " " -f 3 | grep 'no'
+  register: virbr0_result
+  changed_when: false
+  failed_when: false
+
+- name: disable virbr0
+  shell: virsh net-destroy default; virsh net-autostart default --disable
+  when: virbr0_result.rc != 0

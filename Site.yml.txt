@@ -1,0 +1,26 @@
+---
+- name: pxeserver
+  hosts: pxeserver
+  roles:
+    - common
+    - pxeserver
+- name: adminpod_worker
+  hosts: adminpod_worker
+  roles:
+   - common
+   - adminpod_worker
+- name: hypervisor
+  hosts: hypervisor
+  roles:
+   - common
+   - hypervisor
+- name: PCIDSS
+  hosts:
+   - hypervisor
+   - pxeserver
+   - adminpod_worker
+  roles:
+   - clamav
+   - tamperindicative
+  tags:
+   - PCIDSS

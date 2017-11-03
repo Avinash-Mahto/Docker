@@ -1,0 +1,56 @@
+---
+- name: create dhcpd.conf
+  template:
+    src: dhcpd.conf.j2
+    dest: /etc/dhcp/dhcpd.conf
+  notify: restart dhcpd
+
+- name: create /var/lib/tftpboot/pxelinux.cfg/MACADDR
+  template:
+    src: pxelinux.cfg_template.j2
+    dest: /var/lib/tftpboot/pxelinux.cfg/01-{{ item.boot.macaddr | regex_replace(':', '-') | lower }}
+  with_items:
+    - "{{ managed_hosts | selectattr('boot.uefi', 'defined') | rejectattr('boot.uefi') | selectattr('boot.boot_type', 'equalto', 'kickstart') | list }}"
+    - "{{ managed_hosts | selectattr('boot.uefi', 'defined') | rejectattr('boot.uefi') | selectattr('boot.boot_type', 'equalto', 'preseed') | list }}"
+    - "{{ managed_hosts | rejectattr('boot.uefi', 'defined') | selectattr('boot.boot_type', 'equalto', 'kickstart') | list }}"
+    - "{{ managed_hosts | rejectattr('boot.uefi', 'defined') | selectattr('boot.boot_type', 'equalto', 'preseed') | list }}"
+  loop_control:
+    label: "{{ item.hostname }} - /var/lib/tftpboot/pxelinux.cfg/01-{{ item.boot.macaddr | regex_replace(':', '-') | lower }}"
+
+- name: create /var/lib/tftpboot/MACADDR
+  template:
+    src: pxe_grub.conf_template.j2
+    dest: /var/lib/tftpboot/01-{{ item.boot.macaddr | regex_replace(':', '-') | upper }}
+  with_items:
+    - "{{ managed_hosts | selectattr('boot.uefi', 'defined') | selectattr('boot.uefi') | selectattr('boot.boot_type', 'equalto', 'kickstart') | list }}"
+    - "{{ managed_hosts | selectattr('boot.uefi', 'defined') | selectattr('boot.uefi') | selectattr('boot.boot_type', 'equalto', 'preseed') | list }}"
+  loop_control:
+    label: "{{ item.hostname }} - /var/lib/tftpboot/01-{{ item.boot.macaddr | regex_replace(':', '-') | upper }}"
+
+- name: create preseed/HOSTNAME.seed
+  template:
+    src: "{{ item.boot.boot_template }}"
+    dest: /var/lib/tftpboot/preseed/{{ item.hostname }}{% if item.secondary is defined %}_{{ item.secondary }}{% endif %}.seed
+  with_items:
+    "{{ managed_hosts | selectattr('boot.boot_type', 'equalto', 'preseed') | list }}"
+  loop_control:
+    label: "{{ item.hostname }} - /var/lib/tftpboot/preseed/{{ item.hostname }}{% if item.secondary is defined %}_{{ item.secondary }}{% endif %}.seed"
+
+- name: create ks/HOSTNAME.ks
+  template:
+    src: "{{ item.boot.boot_template }}"
+    dest: /var/lib/tftpboot/ks/{{ item.hostname }}{% if item.secondary is defined %}_{{ item.secondary }}{% endif %}.ks
+  with_items:
+    "{{ managed_hosts | selectattr('boot.boot_type', 'equalto', 'kickstart') | list }}"
+  loop_control:
+    label: "{{ item.hostname }} - /var/lib/tftpboot/ks/{{ item.hostname }}{% if item.secondary is defined %}_{{ item.secondary }}{% endif %}.ks"
+
+- name: create post-scripts/post-HOSTNAME
+  template:
+    src: "postscripts.sh.j2"
+    dest: /var/lib/tftpboot/post-scripts/post-{{ item.hostname }}{% if item.secondary is defined %}_{{ item.secondary }}{% endif %}
+  with_items:
+    - "{{ managed_hosts | selectattr('boot.boot_type', 'equalto', 'kickstart') | list }}"
+    - "{{ managed_hosts | selectattr('boot.boot_type', 'equalto', 'preseed') | list }}"
+  loop_control:
+    label: "{{ item.hostname }} - /var/lib/tftpboot/post-scripts/post-{{ item.hostname }}{% if item.secondary is defined %}_{{ item.secondary }}{% endif %}"

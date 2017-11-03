@@ -1,0 +1,28 @@
+---
+- name: install snmp
+  yum: name="{{ item }}" state=present disablerepo='*' enablerepo='pxeboot'
+  with_items:
+    - net-snmp
+    - net-snmp-utils
+
+- name: create directory
+  file:
+    dest: "{{ item }}"
+    state: directory
+  with_items:
+    - /etc/snmp/
+    - /etc/snmp/config.d/
+
+- name: configure /etc/snmp/config.d/pxeserver.conf
+  template:
+    src: etc_snmp_config.d_pxeserver.conf.j2
+    dest: /etc/snmp/config.d/pxeserver.conf
+  notify: restart snmpd
+
+- name: start snmpd service
+  service:
+    name: "{{ item }}"
+    enabled: yes
+    state: started
+  with_items:
+    - snmpd

@@ -1,0 +1,45 @@
+# {{ ansible_managed }}
+{% from "pxe_network_calculation.j2" import pxeserver_samenet_addr with context %}
+{% from "serial_opt.j2" import kernel_serial_opt with context %}
+
+install
+reboot
+skipx
+text
+
+autostep --autoscreenshot
+firstboot --disabled
+
+network --bootproto=dhcp {% if item.hostname is defined %}--hostname {{ item.hostname }}{% endif %}
+
+url --url=http://{{ pxeserver_samenet_addr }}/tftpboot/{{ item.repo.dirname }}/
+
+rootpw rootpassword123
+
+firewall --disabled
+authconfig --enableshadow --passalgo=sha512
+
+selinux --{{ item.selinux | default('disabled') }}
+timezone --utc {{ item.timezone | default('Etc/UTC') }}
+lang en_US.UTF-8
+keyboard us
+
+{% if item.boot.boot_template_disk is defined %}
+{% include item.boot.boot_template_disk %}
+{% else %}
+{% include "ks_template_centos7_2_disk_default.j2" %}
+{% endif %}
+
+%packages
+@core
+{% if item.boot.additional_packages is defined %}
+{{ item.boot.additional_packages | join('\n') }}
+{% endif %}
+%end
+
+%post --log=/root/ks-post.log
+curl -o /root/postscripts.sh http://{{ pxeserver_samenet_addr }}/tftpboot/post-scripts/post-{{ item.hostname }}{% if item.secondary is defined %}_{{ item.secondary }}{% endif %}
+
+chmod +x /root/postscripts.sh
+/bin/sh -x /root/postscripts.sh
+%end

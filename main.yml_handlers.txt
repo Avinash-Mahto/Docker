@@ -1,0 +1,27 @@
+---
+- name: restart xinetd
+  service: name=xinetd state=restarted
+
+- name: restart dhcpd
+  service: name=dhcpd state=restarted
+
+- name: restart httpd
+  service: name=httpd state=restarted
+
+- name: restart snmpd
+  service: name=snmpd state=restarted
+
+- name: ifdown ifup with ip_alias
+  shell: |
+    ifdown {{ item.item.name }}
+    sleep 1
+    ifup {{ item.item.name }}
+  with_items:
+    "{{ result_ifcfg_ip_alias.results | default([]) }}"
+
+# Note: this must be written at the bottom, at least after ifup/down handler
+#       because this handler is to update interface related ansible_fact, when you update interface during playbook
+# See: http://docs.ansible.com/ansible/playbooks_intro.html
+# > Notify handlers are always run in the same order they are defined, not in the order listed in the notify-statement. This is also the case for handlers using listen.
+- name: gather_facts
+  setup:

@@ -1,0 +1,79 @@
+---
+- name: create directroy for virtualmachine disk store
+  file:
+    path: /data/libvirt/images
+    state: directory
+
+- name: create directory for virtualmachine template/iso store
+  file:
+    path: /data/libvirt/templates
+    state: directory
+
+- name: list virtualmachines on the hypervisor
+  set_fact:
+    virtualmachines: '{{ managed_hosts | selectattr("type","equalto","virtual") | selectattr("virtualized.hypervisor", "equalto", inventory_hostname) | list }}'
+
+- name: create a disk
+  shell: >
+    {% if item.0.boot.templates is defined and item.0.boot.templates | selectattr("target","equalto",item.1.target) | list | count > 0 %}
+    {% set template = item.0.boot.templates | selectattr("target","equalto",item.1.target) | first %}
+    {% if template.format != item.1.type %}
+    echo "Error: disk type mismatch: template => {{ template.format }}, image => {{ item.1.type }}" &&
+    exit 1
+    {% else %}
+    qemu-img create
+    -f {{ template.format }}
+    -b /data/libvirt/templates/{{ template.filename }}
+    {% endif %}
+    {% else %}
+    qemu-img create
+    -f {{ item.1.type }}
+    {% if item.1.type == "qcow2" %} -o preallocation=metadata{% else %} -o preallocation=full{% endif %}
+    {% endif %}
+    /data/libvirt/images/{{ item.0.hostname }}_{{ item.1.target }}.img {{ item.1.size_gb }}G
+  args:
+    creates: /data/libvirt/images/{{ item.0.hostname }}_{{ item.1.target }}.img
+  with_subelements:
+    - "{{ virtualmachines }}"
+    - disks
+
+# lookup template sucks
+# https://github.com/ansible/ansible/issues/9551
+- name: define a virtual machine
+  virt:
+    name={{ item.hostname }}
+    command=define
+    xml="{{ lookup('template', playbook_dir + '/roles/hypervisor/templates/virtualmachine.xml.j2') }}"
+    uri='qemu:///system'
+  with_items:
+    "{{ virtualmachines }}"
+
+- name: list virtualmachines on the hypervisor
+  set_fact:
+    virtualmachines: '{{ managed_hosts | selectattr("type","equalto","virtual") | selectattr("virtualized.hypervisor", "equalto", inventory_hostname) | list }}'
+  when: virtualmachines is not defined
+  tags: virtualmachine_set_autostart
+
+- name: set autostart on virtualmachines
+  virt:
+    name={{ item.hostname }}
+    command=autostart
+    uri='qemu:///system'
+  with_items:
+    "{{ virtualmachines }}"
+  tags: virtualmachine_set_autostart
+
+- name: list virtualmachines on the hypervisor
+  set_fact:
+    virtualmachines: '{{ managed_hosts | selectattr("type","equalto","virtual") | selectattr("virtualized.hypervisor", "equalto", inventory_hostname) | list }}'
+  when: virtualmachines is not defined
+  tags: virtualmachine_start
+
+- name: make sure the virtual machine is running
+  virt:
+    name={{ item.hostname }}
+    state=running
+    uri='qemu:///system'
+  with_items:
+    "{{ virtualmachines }}"
+  tags: virtualmachine_start

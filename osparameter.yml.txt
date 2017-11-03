@@ -1,0 +1,104 @@
+---
+
+- name: changing kernel parameters
+  sysctl: name="{{item.name}}" value="{{item.value}}" state={{item.state}} reload=yes
+  with_items:
+    - name: kernel.sysrq
+      value: 5
+      state: present
+    - name: net.ipv6.conf.all.disable_ipv6
+      value: 1
+      state: present
+    - name: net.ipv6.conf.default.disable_ipv6
+      value: 1
+      state: present
+    - name: net.nf_conntrack_max
+      value: 262144
+      state: present
+    - name: net.ipv4.tcp_rmem
+      value: 4096 87380 2097152
+      state: present
+    - name: net.ipv4.tcp_wmem
+      value: 2096 16384 2097152
+      state: present
+    - name: vm.overcommit_memory
+      value: 0
+      state: present
+    - name: vm.overcommit_ratio
+      value: 50
+      state: present
+
+- name: configure logrotate parameter
+  lineinfile: dest=/etc/logrotate.conf regexp='^{{ item.name }} ' line='{{ item.name }} {{ item.value }}' owner=root group=root mode=0644
+  with_items:
+    - name: rotate
+      value: 12
+    - name: keep
+      value: 12
+
+- name: list physical interfaces
+  shell: "ls /sys/class/net/ | awk '/^eth[0-9]+$|^em[0-9]+$|^p[0-9]+p[0-9]+$/{print $1}'"
+  register: physical_interfaces_list
+  changed_when: false
+
+- name: check if interface supports RX ring buffer tuning
+  shell: "ethtool -g {{ item }} |  grep -A4 'Pre-set maximums' | grep 'RX:' | awk '{printf(\"%d\",$2)}'"
+  register: physical_interfaces_ethtool_g_premax
+  with_items: "{{ physical_interfaces_list.stdout_lines }}"
+  ignore_errors: true
+  changed_when: false
+
+- name: make sure the ring buffers tuned on startup
+  lineinfile:
+    dest: /etc/rc.d/rc.local
+    regexp: '^ethtool -G {{ item.item }} rx'
+    line: 'ethtool -G {{ item.item }} rx 1024'
+    state: '{% if item.rc == 0 and item.stdout|int >= 1024 %}present{% else %}absent{% endif %}'
+    insertbefore: '^touch /var/run/rebootFlag'
+    owner: root
+    group: root
+    mode: 0755
+  with_items: "{{ physical_interfaces_ethtool_g_premax.results }}"
+
+- name: check if interface require RX ring buffer tuning
+  shell: "ethtool -g {{ item.item }} |  grep -A4 'Current' | grep 'RX:' | awk '{printf(\"%d\",$2)}'"
+  register: physical_interfaces_ethtool_g_cur
+  with_items: "{{ physical_interfaces_ethtool_g_premax.results }}"
+  when: item.rc ==0 and item.stdout|int >= 1024
+  ignore_errors: true
+  changed_when: false
+
+- name: configure ethernet ring buffer now
+  command: "ethtool -G {{ item.item.item }} rx 1024"
+  with_items: "{{ physical_interfaces_ethtool_g_cur.results }}"
+  when: item.rc is defined and item.rc == 0 and item.stdout|int != 1024
+
+- name: check if interface support LRO offload OFF
+  shell: "ethtool -k {{ item }} | grep 'large-receive-offload:'"
+  register: physical_interfaces_ethtool_k_lro
+  with_items: "{{ physical_interfaces_list.stdout_lines }}"
+  ignore_errors: true
+  changed_when: false
+
+- name: make sure the interfaces have LRO turned off on startup
+  lineinfile:
+    dest: /etc/rc.d/rc.local
+    regexp: '^ethtool -K {{ item.item }} lro'
+    line: 'ethtool -K {{ item.item }} lro off'
+    state: '{% if item.rc == 0 and not item.stdout.find("[fixed]") >= 0 %}present{% else %}absent{% endif %}'
+    insertbefore: '^touch /var/run/rebootFlag'
+    owner: root
+    group: root
+    mode: 0755
+  with_items: "{{ physical_interfaces_ethtool_k_lro.results }}"
+
+- name: configure interface LRO now
+  command: "ethtool -K {{ item.item }} lro off"
+  with_items: "{{ physical_interfaces_ethtool_k_lro.results }}"
+  when: item.rc is defined and item.rc == 0 and item.stdout.find('on') >= 0
+
+- name: configure udev rules to set vnet interface have mtu 9000
+  template:
+    src: 70-persistent-vnet-mtu9000.rules.j2
+    dest: /etc/udev/rules.d/70-persistent-vnet-mtu9000.rules
+  notify: restart udev
