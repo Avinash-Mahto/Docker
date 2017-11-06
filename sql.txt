@@ -1,0 +1,49 @@
+create view test2 as select Date, Region, Zone, OSType, Used, Total, Used / Total * 100 as Utilized from VS_Morning;
+
+
+CREATE TRIGGER ins_sum1 BEFORE INSERT ON test
+       FOR EACH ROW SET new.Date = now();
+
+/mnt/nfsshare/storage/infra_test/BackupSDP
+
+update jp1 set Region = 'JP1';
+
+
+
+mysql -u root --password redhat -B -e SELECT Date, Regions, Zone, Total, `OS-Type`, `Utilized_Percent` FROM VS_Morning | sed "s/'/\ > VS_Morning.csv
+
+
+LOAD DATA LOCAL INFILE '/root/17.csv' INTO TABLE VS_Afternoon COLUMNS TERMINATED BY ',';
+
+mysqldump -u root -p --all-databases --master-data > /root/dbdump.db
+mysql -u root -p < /root/dbdump.db
+
+FLUSH TABLES WITH READ LOCK;
+UNLOCK TABLES;
+
+
+
+cat VS-HV-Report_2017.txt| awk '{ print $1}' | wc -l
+
+
+ 1105  pr -mts' ' b.csv format-allinement-output-24-July-2017.csv > c.csv
+
+
+cache clear:
+free && sync && echo 3 > /proc/sys/vm/drop_caches && echo "" && free
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
